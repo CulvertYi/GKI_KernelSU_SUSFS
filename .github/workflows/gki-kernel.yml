@@ -255,25 +255,36 @@ jobs:
 
       - name: 应用 glibc 2.38 兼容修复
         run: |
-          ACTUAL_SUBLEVEL=${{ inputs.sub_level }}
-          if [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.10" && $ACTUAL_SUBLEVEL -le 186 ]] || 
-             [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.15" && $ACTUAL_SUBLEVEL -le 119 ]] || 
-             [[ "${{ inputs.android_version }}" == "android14" && "${{ inputs.kernel_version }}" == "5.15" && $ACTUAL_SUBLEVEL -le 110 ]] || 
-             [[ "${{ inputs.android_version }}" == "android14" && "${{ inputs.kernel_version }}" == "6.1" && $ACTUAL_SUBLEVEL -le 43 ]]; then
-            GLIBC_VERSION=$(ldd --version 2>/dev/null | head -n 1 | awk '{print $NF}') 
+          RAW_SUB="${{ inputs.sub_level }}"
+          
+          if [[ ! "$RAW_SUB" =~ ^[0-9]+$ ]]; then
+            echo "Sub level 为 '$RAW_SUB' (非数字)，强制设为 99999 以跳过补丁检查。"
+            CURRENT_SUB=99999
+          else
+            CURRENT_SUB=$RAW_SUB
+          fi
+
+          if [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.10" && $CURRENT_SUB -le 186 ]] || 
+             [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.15" && $CURRENT_SUB -le 119 ]] || 
+             [[ "${{ inputs.android_version }}" == "android14" && "${{ inputs.kernel_version }}" == "6.1" && $CURRENT_SUB -le 43 ]]; then
+            
+            echo "进入逻辑${{ inputs.android_version }}-${{ inputs.kernel_version }}-$CURRENT_SUB"
+            GLIBC_VERSION=$(ldd --version 2>/dev/null | head -n 1 | awk '{print $NF}')          
             if [ "$(printf '%s\n' "2.38" "$GLIBC_VERSION" | sort -V | head -n1)" = "2.38" ]; then 
               cd "$CONFIG/common"
+              echo "进入目录$CONFIG/common"
               sed -i '/\$(Q)\$(MAKE) -C \$(SUBCMD_SRC) OUTPUT=\$(abspath \$(dir \$@))\/ \$(abspath \$@)/s//$(Q)$(MAKE) -C $(SUBCMD_SRC) EXTRA_CFLAGS="$(CFLAGS)" OUTPUT=$(abspath $(dir $@))\/ $(abspath $@)/' tools/bpf/resolve_btfids/Makefile 2>/dev/null || true
-              if [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.10" && $ACTUAL_SUBLEVEL -le 186 ]] || 
-                 [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.15" && $ACTUAL_SUBLEVEL -le 119 ]] || 
-                 [[ "${{ inputs.android_version }}" == "android14" && "${{ inputs.kernel_version }}" == "5.15" && $ACTUAL_SUBLEVEL -le 110 ]]; then
+              
+              if [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.10" && $CURRENT_SUB -le 186 ]] || 
+                 [[ "${{ inputs.android_version }}" == "android13" && "${{ inputs.kernel_version }}" == "5.15" && $CURRENT_SUB -le 119 ]]; then
+                
                 sed -i '/char \*buf = NULL;/a int i;' tools/lib/subcmd/parse-options.c 2>/dev/null || true
                 sed -i 's/for (int i = 0; subcommands\[i\]; i++) {/for (i = 0; subcommands[i]; i++) {/' tools/lib/subcmd/parse-options.c 2>/dev/null || true
                 sed -i '/if (subcommands) {/a int i;' tools/lib/subcmd/parse-options.c 2>/dev/null || true
                 sed -i 's/for (int i = 0; subcommands\[i\]; i++)/for (i = 0; subcommands[i]; i++)/' tools/lib/subcmd/parse-options.c 2>/dev/null || true
               fi
             fi
-          fi 
+          fi
 
       - name: 使GKI在一加8E平台正常使用
         if: ${{ inputs.supp_op }}
